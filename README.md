@@ -1,124 +1,162 @@
-# 🎬 Sora Watermark Remover
+# 🎬 Công cụ xoá Watermark Video
 
-Ứng dụng Python xóa watermark từ video được tạo bởi Sora (OpenAI). Hỗ trợ giao diện web (Gradio) và CLI.
+Phát hiện và xoá **text watermark** + **logo** khỏi video tự động.
 
-## 📁 Cấu trúc Project
+Sử dụng **EasyOCR** để nhận diện chữ, **template matching** để tìm logo, và **OpenCV inpainting** (Navier-Stokes) để xoá sạch.
+
+---
+
+## ✨ Tính năng
+
+- 🔍 **Nhận diện text bằng OCR** — tìm và xoá text watermark (vd: `@tinh.nguyenvan`, `Sora`)
+- 🖼️ **Nhận diện logo bằng template matching** — tìm logo ở mọi vị trí, kể cả khi logo di chuyển ngẫu nhiên
+- 🎨 **Xoá bằng inpainting Navier-Stokes** — chất lượng cao, giữ nguyên nền
+- 🔊 **Giữ nguyên âm thanh** — tự động ghép audio từ video gốc bằng ffmpeg
+- ⚡ **Tối ưu tốc độ** — OCR chạy mỗi N frame, logo dò mỗi frame
+
+---
+
+## 📋 Yêu cầu
+
+- Python 3.10+
+- ffmpeg (để ghép âm thanh)
+
+---
+
+## 🚀 Cài đặt
+
+### 1. Cài dependencies
+
+```bash
+pip3 install -r requirements.txt
+```
+
+### 2. Cài ffmpeg (nếu chưa có)
+
+```bash
+# macOS
+brew install ffmpeg
+
+# Ubuntu/Debian
+sudo apt install ffmpeg
+```
+
+---
+
+## 📖 Hướng dẫn sử dụng
+
+### Cơ bản — Xoá text watermark + logo
+
+```bash
+python3 main.py video.mp4 -o output/clean.mp4
+```
+
+Mặc định xoá text `@tinh.nguyenvan`, `Sora` và logo Sora (`media/logo_sora.png`).
+
+### Dùng logo khác
+
+```bash
+python3 main.py video.mp4 -o output/clean.mp4 -l media/logo_sora.png
+```
+
+### Xoá text tuỳ chỉnh
+
+```bash
+python3 main.py video.mp4 -o output/clean.mp4 -t "@username,watermark_text"
+```
+
+Nhiều text phân cách bằng dấu phẩy.
+
+---
+
+## ⚙️ Tham số dòng lệnh
+
+| Tham số | Mô tả | Mặc định |
+|---------|--------|----------|
+| `input` | Đường dẫn video đầu vào | *(bắt buộc)* |
+| `-o`, `--output` | Đường dẫn video đầu ra | `{input}_clean.mp4` |
+| `-t`, `--text` | Text watermark cần xoá (phân cách bằng `,`) | `@tinh.nguyenvan,sora` |
+| `-l`, `--logo` | Đường dẫn ảnh logo để dò | `media/logo_sora.png` |
+| `--logo-threshold` | Ngưỡng khớp logo 0-1 (thấp hơn = nhạy hơn) | `0.65` |
+| `-e`, `--expand` | Số pixel mở rộng vùng xoá | `15` |
+| `-d`, `--detect-every` | Chạy OCR mỗi N frame | `5` |
+| `--lang` | Ngôn ngữ OCR (phân cách bằng `,`) | `en` |
+
+---
+
+## 📂 Cấu trúc thư mục
 
 ```
 app_remove_watermark/
-├── app.py                      # Giao diện web Gradio (entry point chính)
-├── main.py                     # CLI entry point
-├── run.sh                      # Script khởi chạy nhanh
-├── requirements.txt            # Dependencies
-├── .gitignore
-│
-├── config/
-│   ├── __init__.py             # Config loader
-│   └── settings.yaml           # Cấu hình ứng dụng
-│
-├── core/
-│   ├── __init__.py
-│   ├── video_processor.py      # Đọc/ghi video, trích xuất frame
-│   ├── watermark_detector.py   # Phát hiện vị trí watermark
-│   ├── mask_generator.py       # Tạo mask chính xác cho vùng watermark
-│   ├── watermark_remover.py    # Xóa watermark bằng inpainting
-│   └── deep_inpainter.py       # Deep learning inpainting (optional)
-│
-├── utils/
-│   ├── __init__.py
-│   ├── file_utils.py           # Quản lý file/path
-│   └── logger.py               # Cấu hình logging
-│
-├── models/                     # Thư mục chứa model weights (nếu dùng deep learning)
-├── output/                     # Video đã xử lý
-├── logs/                       # Log files
-└── temp/                       # File tạm trong quá trình xử lý
+├── main.py              # Script chính
+├── requirements.txt     # Dependencies
+├── README.md            # Hướng dẫn (file này)
+├── media/               # Video đầu vào & ảnh logo
+│   ├── demo.mp4
+│   └── logo_sora.png
+└── output/              # Video đã xử lý
+    └── clean.mp4
 ```
 
-## 🚀 Cài đặt & Chạy
+---
 
-### Cách 1: Script tự động
+## 💡 Ví dụ nâng cao
+
+### Tăng độ chính xác (OCR mỗi frame, chậm hơn)
+
 ```bash
-chmod +x run.sh
-./run.sh
+python3 main.py video.mp4 -o output/clean.mp4 -l media/logo_sora.png -d 1
 ```
 
-### Cách 2: Thủ công
+### Mở rộng vùng xoá (watermark lớn hoặc bị sót viền)
+
 ```bash
-# Tạo virtual environment
-python3 -m venv venv
-source venv/bin/activate
-
-# Cài đặt dependencies
-pip install -r requirements.txt
-
-# Chạy giao diện web
-python app.py
+python3 main.py video.mp4 -o output/clean.mp4 -e 25
 ```
 
-Mở trình duyệt tại: **http://localhost:7860**
+### Giảm ngưỡng logo (nếu logo không bị phát hiện)
 
-### Cách 3: CLI (Command Line)
 ```bash
-# Tự động phát hiện và xóa watermark
-python main.py video_input.mp4
-
-# Chỉ định vị trí watermark
-python main.py video_input.mp4 --position bottom-right
-
-# Chỉ định vùng thủ công (X Y Width Height)
-python main.py video_input.mp4 --region 800 600 200 50
-
-# Sử dụng Navier-Stokes (chất lượng cao hơn)
-python main.py video_input.mp4 --method ns
-
-# Chỉ định output
-python main.py video_input.mp4 -o output/clean.mp4
+python3 main.py video.mp4 -o output/clean.mp4 -l media/logo_sora.png --logo-threshold 0.5
 ```
 
-## ⚙️ Giải pháp kỹ thuật
+### Xoá nhiều loại text cùng lúc
 
-### 1. Phát hiện Watermark (Detection)
-- **Auto-detect**: Phân tích góc frame, tìm vùng tĩnh qua nhiều frame
-- **Template matching**: So khớp mẫu watermark (multi-scale)
-- **Edge analysis**: Phát hiện text/logo qua phân tích cạnh và tần số
-- **Static region**: So sánh nhiều frame để tìm vùng không đổi (watermark)
+```bash
+python3 main.py video.mp4 -o output/clean.mp4 -t "@user1,@user2,watermark,Sora"
+```
 
-### 2. Tạo Mask
-- **Region-based**: Mask từ vùng phát hiện + mở rộng
-- **Pixel-precise**: Phân tích contour để mask chính xác từng pixel
-- **Feathering**: Làm mượt biên mask để blend tự nhiên
+---
 
-### 3. Xóa Watermark (Inpainting)
-| Method | Tốc độ | Chất lượng | Yêu cầu |
-|--------|--------|------------|----------|
-| **TELEA** | ⚡ Nhanh | ⭐⭐⭐ | OpenCV |
-| **Navier-Stokes** | 🐢 Chậm hơn | ⭐⭐⭐⭐ | OpenCV |
-| **Deep Learning** | 🐢🐢 Chậm nhất | ⭐⭐⭐⭐⭐ | PyTorch + GPU |
+## 🔧 Cách hoạt động
 
-### 4. Hậu xử lý
-- **Temporal smoothing**: Giảm nhấp nháy giữa các frame
-- **Mask feathering**: Blend mượt vùng đã xóa với xung quanh
+1. **Tải mô hình OCR** (EasyOCR, lần đầu tải ~100MB)
+2. **Tải template logo** ở 8 tỷ lệ khác nhau (nếu có)
+3. **Duyệt từng frame:**
+   - Dò **text** bằng OCR mỗi N frame → xoá text trước
+   - Dò **logo** mỗi frame bằng template matching → xoá logo sau (trên frame đã sạch text)
+4. **Tạo mask** cho vùng text + logo (logo dùng vùng mở rộng gấp đôi)
+5. **Xoá watermark** bằng inpainting Navier-Stokes
+6. **Ghép âm thanh** từ video gốc bằng ffmpeg
 
-## 💡 Mẹo sử dụng
-
-1. **Bắt đầu với Auto**: Để ứng dụng tự phát hiện watermark trước
-2. **Preview trước khi xử lý**: Kiểm tra vùng phát hiện đúng chưa
-3. **Dùng Manual nếu cần**: Nếu auto-detect sai, chỉ định vùng thủ công
-4. **Mask expansion 5-15px**: Mở rộng mask một chút cho kết quả tốt hơn
-5. **NS cho chất lượng cao**: Phương pháp Navier-Stokes cho kết quả mượt hơn TELEA
-
-## 📦 Dependencies chính
-
-- **OpenCV**: Xử lý ảnh/video, inpainting
-- **NumPy**: Xử lý mảng số
-- **Gradio**: Giao diện web
-- **Loguru**: Logging
-- **PyTorch** (optional): Deep learning inpainting
+---
 
 ## ⚠️ Lưu ý
 
-- Chất lượng kết quả phụ thuộc vào độ phức tạp của vùng bên dưới watermark
-- Video có nền đơn giản (trời, tường...) sẽ cho kết quả tốt nhất
-- Video có chi tiết phức tạp dưới watermark có thể cần deep learning method
-- Deep learning method yêu cầu PyTorch và GPU để chạy nhanh
+- Lần chạy đầu tiên sẽ tải mô hình OCR (~100MB), các lần sau dùng cache
+- Logo di chuyển ngẫu nhiên giữa các frame → dò mỗi frame, không dùng vị trí cố định
+- Chất lượng inpainting phụ thuộc vào nền video — nền phức tạp có thể bị mờ nhẹ
+- Cần **ffmpeg** để giữ âm thanh, nếu không có thì video xuất ra sẽ không có tiếng
+- Hỗ trợ CPU, không bắt buộc GPU
+
+---
+
+## 📊 Hiệu suất tham khảo
+
+| Cấu hình | Tốc độ | Ghi chú |
+|----------|--------|---------|
+| `-d 5` (mặc định) | ~2-3 fps | Cân bằng tốc độ/chất lượng |
+| `-d 1` (mỗi frame) | ~1-1.5 fps | Chính xác nhất |
+| `-d 10` | ~3-4 fps | Nhanh, phù hợp text cố định |
+
+*Đo trên MacBook, CPU only, video 704x1280*
