@@ -13,6 +13,7 @@ Sử dụng **EasyOCR** để nhận diện chữ, **template matching** để t
 - 🎨 **Xoá bằng inpainting Navier-Stokes** — chất lượng cao, giữ nguyên nền
 - 🔊 **Giữ nguyên âm thanh** — tự động ghép audio từ video gốc bằng ffmpeg
 - ⚡ **Tối ưu tốc độ** — OCR chạy mỗi N frame, logo dò mỗi frame
+- 📂 **Batch processing** — tự động xử lý tất cả video trong thư mục `media/`, lưu vào `output/`, bỏ qua video đã xử lý
 
 ---
 
@@ -45,7 +46,25 @@ sudo apt install ffmpeg
 
 ## 📖 Hướng dẫn sử dụng
 
-### Cơ bản — Xoá text watermark + logo
+### Batch — Xử lý hàng loạt (khuyên dùng)
+
+Tự động xử lý **tất cả video** trong `media/` và lưu vào `output/`:
+
+```bash
+python3 main.py --batch
+```
+
+- Quét tất cả file video trong `media/` (`.mp4`, `.avi`, `.mov`, `.mkv`, `.wmv`, `.flv`, `.webm`, `.m4v`)
+- **Bỏ qua tự động** nếu file cùng tên đã tồn tại trong `output/` — chạy lại không xử lý lại video đã xong
+- Khởi tạo mô hình OCR **một lần** rồi tái sử dụng cho tất cả video
+
+Tuỳ chỉnh thư mục đầu vào/đầu ra:
+
+```bash
+python3 main.py --batch --media-dir /path/to/input --output-dir /path/to/output
+```
+
+### Đơn lẻ — Xoá watermark một video
 
 ```bash
 python3 main.py video.mp4 -o output/clean.mp4
@@ -73,8 +92,11 @@ Nhiều text phân cách bằng dấu phẩy.
 
 | Tham số | Mô tả | Mặc định |
 |---------|--------|----------|
-| `input` | Đường dẫn video đầu vào | *(bắt buộc)* |
+| `input` | Đường dẫn video đầu vào (bỏ trống nếu dùng `--batch`) | — |
 | `-o`, `--output` | Đường dẫn video đầu ra | `{input}_clean.mp4` |
+| `--batch` | Xử lý hàng loạt tất cả video trong `media/` → `output/` | — |
+| `--media-dir` | Thư mục chứa video đầu vào (batch mode) | `media/` |
+| `--output-dir` | Thư mục lưu video đầu ra (batch mode) | `output/` |
 | `-t`, `--text` | Text watermark cần xoá (phân cách bằng `,`) | `@tinh.nguyenvan,sora` |
 | `-l`, `--logo` | Đường dẫn ảnh logo để dò | `media/logo_sora.png` |
 | `--logo-threshold` | Ngưỡng khớp logo 0-1 (thấp hơn = nhạy hơn) | `0.65` |
@@ -92,15 +114,27 @@ app_remove_watermark/
 ├── requirements.txt     # Dependencies
 ├── README.md            # Hướng dẫn (file này)
 ├── media/               # Video đầu vào & ảnh logo
-│   ├── demo.mp4
-│   └── logo_sora.png
-└── output/              # Video đã xử lý
-    └── clean.mp4
+│   ├── catim1.mp4       #   Đặt video cần xử lý vào đây
+│   ├── catim2.mp4
+│   └── logo_sora.png    #   Template logo
+└── output/              # Video đã xử lý (tự động tạo)
+    ├── catim1.mp4       #   Cùng tên file → batch sẽ bỏ qua
+    └── catim2.mp4
 ```
 
 ---
 
 ## 💡 Ví dụ nâng cao
+
+### Batch với tuỳ chỉnh
+
+```bash
+# Xử lý hàng loạt với OCR chính xác hơn và ngưỡng logo thấp hơn
+python3 main.py --batch -d 1 --logo-threshold 0.5
+
+# Xử lý thư mục tuỳ chỉnh
+python3 main.py --batch --media-dir ~/Videos/input --output-dir ~/Videos/output
+```
 
 ### Tăng độ chính xác (OCR mỗi frame, chậm hơn)
 

@@ -22,6 +22,14 @@ from tqdm import tqdm
 # Đường dẫn logo mặc định
 DEFAULT_LOGO_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "media", "logo_sora.png")
 
+# Thư mục mặc định cho batch processing
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+MEDIA_DIR = os.path.join(BASE_DIR, "media")
+OUTPUT_DIR = os.path.join(BASE_DIR, "output")
+
+# Các định dạng video được hỗ trợ
+VIDEO_EXTENSIONS = {".mp4", ".avi", ".mov", ".mkv", ".wmv", ".flv", ".webm", ".m4v"}
+
 
 class TextWatermarkRemover:
     """Phát hiện text/logo watermark trong video bằng OCR và xoá bằng inpainting."""
@@ -125,7 +133,7 @@ class TextWatermarkRemover:
             Danh sách toạ độ (x, y, w, h) của logo tìm thấy.
         """
         if not self.logo_templates:
-            return []
+            return [], 0
 
         gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
         best_val = 0
@@ -396,12 +404,160 @@ class TextWatermarkRemover:
             return output
 
 
+def get_video_files(directory: str) -> list[str]:
+    """Lấy danh sách file video trong thư mục."""
+    files = []
+    for f in sorted(os.listdir(directory)):
+        _, ext = os.path.splitext(f)
+        if ext.lower() in VIDEO_EXTENSIONS:
+            files.append(f)
+    return files
+
+
+def batch_process(
+    media_dir: str = MEDIA_DIR,
+    output_dir: str = OUTPUT_DIR,
+    target_texts: list[str] = None,
+    logo_path: str | None = None,
+    logo_threshold: float = 0.65,
+    languages: list[str] = None,
+    expand: int = 15,
+    detect_every: int = 5,
+) -> None:
+    """
+    Tự động xử lý tất cả video trong thư mục media và lưu vào output.
+    Bỏ qua các video đã có trong thư mục output (trùng tên file).
+
+    Tham số:
+        media_dir: Thư mục chứa video đầu vào.
+        output_dir: Thư mục lưu video đầu ra.
+        target_texts: Danh sách text watermark cần xoá.
+        logo_path: Đường dẫn ảnh logo.
+        logo_threshold: Ngưỡng khớp logo.
+        languages: Ngôn ngữ OCR.
+        expand: Số pixel mở rộng vùng xoá.
+        detect_every: Chạy OCR mỗi N frame.
+    """
+    # Kiểm tra thư mục media tồn tại
+    if not os.path.isdir(media_dir):
+        print(f"❌ Không tìm thấy thư mục media: {media_dir}")
+        sys.exit(1)
+
+    # Tạo thư mục output nếu chưa có
+    os.makedirs(output_dir, exist_ok=True)
+
+    # Lấy danh sách video trong media
+    video_files = get_video_files(media_dir)
+    if not video_files:
+        print(f"⚠️  Không tìm thấy video nào trong: {media_dir}")
+        return
+
+    # Lấy danh sách file đã có trong output (so sánh tên file)
+    existing_outputs = set(os.listdir(output_dir))
+
+    # Phân loại: cần xử lý vs bỏ qua
+    to_process = []
+    skipped = []
+    for filename in video_files:
+        if filename in existing_outputs:
+            skipped.append(filename)
+        else:
+            to_process.append(filename)
+
+    # Hiển thị tóm tắt
+    print(f"{'='*60}")
+    print(f"📂 Thư mục media : {media_dir}")
+    print(f"📂 Thư mục output: {output_dir}")
+    print(f"📹 Tổng số video : {len(video_files)}")
+    print(f"⏭️  Bỏ qua (đã có): {len(skipped)}")
+    print(f"🔄 Cần xử lý     : {len(to_process)}")
+    print(f"{'='*60}")
+
+    if skipped:
+        print(f"\n⏭️  Các video đã bỏ qua:")
+        for f in skipped:
+            print(f"    - {f}")
+
+    if not to_process:
+        print(f"\n✅ Tất cả video đã được xử lý trước đó. Không có gì cần làm.")
+        return
+
+    print(f"\n🔄 Các video sẽ xử lý:")
+    for i, f in enumerate(to_process, 1):
+        print(f"    {i}. {f}")
+    print()
+
+    # Khởi tạo remover một lần duy nhất (tái sử dụng cho tất cả video)
+    remover = TextWatermarkRemover(
+        target_texts=target_texts,
+        logo_path=logo_path,
+        logo_threshold=logo_threshold,
+        languages=languages,
+    )
+
+    # Xử lý từng video
+    success_count = 0
+    fail_count = 0
+    results = []
+
+    for i, filename in enumerate(to_process, 1):
+        input_path = os.path.join(media_dir, filename)
+        output_path = os.path.join(output_dir, filename)
+
+        print(f"\n{'='*60}")
+        print(f"🎬 [{i}/{len(to_process)}] Đang xử lý: {filename}")
+        print(f"{'='*60}")
+
+        try:
+            remover.process_video(
+                input_path=input_path,
+                output_path=output_path,
+                expand=expand,
+                detect_every=detect_every,
+            )
+            success_count += 1
+            results.append((filename, "✅ Thành công"))
+            print(f"✅ Hoàn thành: {filename}")
+        except Exception as e:
+            fail_count += 1
+            results.append((filename, f"❌ Lỗi: {e}"))
+            print(f"❌ Lỗi khi xử lý {filename}: {e}")
+
+    # Tóm tắt kết quả
+    print(f"\n{'='*60}")
+    print(f"📊 KẾT QUẢ BATCH PROCESSING")
+    print(f"{'='*60}")
+    print(f"✅ Thành công: {success_count}/{len(to_process)}")
+    print(f"❌ Thất bại  : {fail_count}/{len(to_process)}")
+    print(f"⏭️  Đã bỏ qua : {len(skipped)}")
+    print(f"\nChi tiết:")
+    for filename, status in results:
+        print(f"    {filename}: {status}")
+    print(f"{'='*60}")
+
+
 def main():
     parser = argparse.ArgumentParser(
         description="Xoá watermark (text + logo) khỏi video bằng OCR và template matching"
     )
-    parser.add_argument("input", help="Đường dẫn video đầu vào")
+    parser.add_argument("input", nargs="?", help="Đường dẫn video đầu vào (bỏ trống nếu dùng --batch)")
     parser.add_argument("-o", "--output", help="Đường dẫn video đầu ra", default=None)
+    parser.add_argument(
+        "--batch",
+        action="store_true",
+        help="Tự động xử lý tất cả video trong thư mục media/ và lưu vào output/. "
+             "Bỏ qua video đã có trong output/ (trùng tên file).",
+    )
+    parser.add_argument(
+        "--media-dir",
+        help=f"Thư mục chứa video đầu vào cho batch mode (mặc định: media/)",
+        default=MEDIA_DIR,
+    )
+    parser.add_argument(
+        "--output-dir",
+        help=f"Thư mục lưu video đầu ra cho batch mode (mặc định: output/)",
+        default=OUTPUT_DIR,
+    )
     parser.add_argument(
         "-t", "--text",
         help='Text watermark cần xoá, phân cách bằng dấu phẩy (mặc định: "@tinh.nguyenvan,Sora")',
@@ -435,6 +591,29 @@ def main():
 
     args = parser.parse_args()
 
+    languages = [l.strip() for l in args.lang.split(",")]
+    target_texts = [t.strip() for t in args.text.split(",")]
+
+    # --- Batch mode ---
+    if args.batch:
+        batch_process(
+            media_dir=args.media_dir,
+            output_dir=args.output_dir,
+            target_texts=target_texts,
+            logo_path=args.logo,
+            logo_threshold=args.logo_threshold,
+            languages=languages,
+            expand=args.expand,
+            detect_every=args.detect_every,
+        )
+        return
+
+    # --- Single file mode ---
+    if not args.input:
+        print("❌ Cần chỉ định video đầu vào hoặc dùng --batch để xử lý hàng loạt")
+        parser.print_help()
+        sys.exit(1)
+
     if not os.path.isfile(args.input):
         print(f"❌ Không tìm thấy file: {args.input}")
         sys.exit(1)
@@ -447,9 +626,6 @@ def main():
     # Tạo thư mục đầu ra nếu chưa có
     os.makedirs(os.path.dirname(args.output) or ".", exist_ok=True)
 
-    languages = [l.strip() for l in args.lang.split(",")]
-
-    target_texts = [t.strip() for t in args.text.split(",")]
     remover = TextWatermarkRemover(
         target_texts=target_texts,
         logo_path=args.logo,
